@@ -27,6 +27,7 @@
 
 
 var fs = require('fs');
+var path = require('path');
 var extend = require('xtend');
 
 var settings = {
@@ -35,38 +36,87 @@ var settings = {
     access_token: null,
     minimumApiDelay: 500,
 
-    useOpenSSL: true,
+    //useOpenSSL: true,
     useSudoForDfu: false,
 
     //2 megs -- this constant here is arbitrary
-    MAX_FILE_SIZE: 1024 * 1024 * 2
+    MAX_FILE_SIZE: 1024 * 1024 * 2,
+
+    overridesFile: null,
+
+    notSourceExtensions: [
+        ".ds_store",
+        ".jpg",
+        ".gif",
+        ".png",
+        ".include",
+        ".ignore"
+    ],
+    showIncludedSourceFiles: true,
+
+    dirIncludeFilename: "spark.include",
+    dirExcludeFilename: "spark.ignore",
+
+    commandMappings: path.join(__dirname, "mappings.json")
 };
 
 settings.commandPath = __dirname + "/commands/";
-settings.overridesFile = __dirname + "/spark.config.json";
+
+
+settings.findHomePath = function() {
+    var envVars = [
+        'home',
+        'HOME',
+        'HOMEPATH',
+        'USERPROFILE'
+    ];
+
+    for(var i=0;i<envVars.length;i++) {
+        var dir = process.env[envVars[i]];
+        if (dir && fs.existsSync(dir)) {
+            return dir;
+        }
+    }
+    return __dirname;
+};
+
+settings.findOverridesFile = function() {
+    if (!settings.overridesFile ) {
+        var sparkDir = path.join(settings.findHomePath(), ".spark");
+        if (!fs.existsSync(sparkDir)) {
+            fs.mkdirSync(sparkDir);
+        }
+        settings.overridesFile = path.join(sparkDir, "spark.config.json");
+    }
+    return settings.overridesFile;
+};
 
 
 settings.loadOverrides = function () {
     try {
-        if (fs.existsSync(settings.overridesFile)) {
-            settings.overrides = JSON.parse(fs.readFileSync(settings.overridesFile));
+        var filename = settings.findOverridesFile();
+        if (fs.existsSync(filename)) {
+            settings.overrides = JSON.parse(fs.readFileSync(filename));
             settings = extend(settings, settings.overrides);
         }
     }
     catch (ex) {
         console.error('There was an error reading ' + settings.overrides + ': ', ex);
     }
+    return settings;
 };
 settings.override = function (key, value) {
     if (!settings.overrides) {
         settings.overrides = {};
     }
 
+    settings[key] = value;
     settings.overrides[key] = value;
     settings = extend(settings, settings.overrides);
 
     try {
-        fs.writeFileSync(settings.overridesFile, JSON.stringify(settings.overrides, null, 2));
+        var filename = settings.findOverridesFile();
+        fs.writeFileSync(filename, JSON.stringify(settings.overrides, null, 2));
     }
     catch (ex) {
         console.error('There was an error writing ' + settings.overrides + ': ', ex);

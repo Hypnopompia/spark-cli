@@ -141,9 +141,10 @@ VariableCommand.prototype = extend(BaseCommand.prototype, {
             coreid = [ coreid ];
         }
 
-        //TODO: replace with better interactive init
-        var api = new ApiClient(settings.apiUrl);
-        api._access_token = settings.access_token;
+        var api = new ApiClient(settings.apiUrl, settings.access_token);
+        if (!api.ready()) {
+            return;
+        }
 
         var multipleCores = coreid.length > 1;
 
@@ -188,12 +189,14 @@ VariableCommand.prototype = extend(BaseCommand.prototype, {
             return when.resolve(this._cachedVariableList);
         }
 
-        console.log("polling server to see what cores are online, and what variables are available");
+        console.error("polling server to see what cores are online, and what variables are available");
 
         var tmp = when.defer();
         var that = this;
-        var api = new ApiClient(settings.apiUrl);
-        api._access_token = settings.access_token;
+        var api = new ApiClient(settings.apiUrl, settings.access_token);
+        if (!api.ready()) {
+            return;
+        }
 
         var lookupVariables = function (cores) {
             if (!cores || (cores.length == 0)) {
@@ -260,10 +263,11 @@ VariableCommand.prototype = extend(BaseCommand.prototype, {
 
 
     monitorVariables: function (coreid, variableName, delay) {
-        //TODO:
-//        if (!args || (args.length < 1)) {
-//            console.log("Please specify which core ")
-//        }
+        if (!coreid && !variableName) {
+            console.log("Please specify a coreid and a variable name, or just a variable name.");
+            return;
+        }
+
 
         //TODO: if no device id, list devices
         //TODO: if no variable name, list variables
@@ -272,9 +276,9 @@ VariableCommand.prototype = extend(BaseCommand.prototype, {
 
         if (delay < settings.minimumApiDelay) {
             delay = settings.minimumApiDelay;
-            console.log("Delay was too short, resetting to ", settings.minimumApiDelay);
+            console.error("Delay was too short, resetting to ", settings.minimumApiDelay);
         }
-        console.log("Hit CTRL-C to stop!");
+        console.error("Hit CTRL-C to stop!");
 
         var checkVariable = (function () {
             var done = this.getValue(coreid, variableName);

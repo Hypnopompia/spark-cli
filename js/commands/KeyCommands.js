@@ -34,7 +34,7 @@ var utilities = require('../lib/utilities.js');
 var BaseCommand = require("./BaseCommand.js");
 var ApiClient = require('../lib/ApiClient.js');
 var moment = require('moment');
-var ursa = require('ursa');
+//var ursa = require('ursa');
 var fs = require('fs');
 var dfu = require('../lib/dfu.js');
 
@@ -58,6 +58,7 @@ KeyCommands.prototype = extend(BaseCommand.prototype, {
         this.addOption("save", this.saveKeyFromCore.bind(this), "Save a key from your core onto your disk");
         this.addOption("send", this.sendPublicKeyToServer.bind(this), "Tell a server which key you'd like to use by sending your public key");
         this.addOption("doctor", this.keyDoctor.bind(this), "Creates and assigns a new key to your core, and uploads it to the cloud");
+        this.addOption("server", this.writeServerPublicKey.bind(this), "Switch server public keys");
 
         //this.addArgument("get", "--time", "include a timestamp")
         //this.addArgument("monitor", "--time", "include a timestamp")
@@ -91,15 +92,15 @@ KeyCommands.prototype = extend(BaseCommand.prototype, {
         ]);
     },
 
-    makeKeyUrsa: function (filename) {
-        var key = ursa.generatePrivateKey(1024);
-        fs.writeFileSync(filename + ".pem", key.toPrivatePem('binary'));
-        fs.writeFileSync(filename + ".pub.pem", key.toPublicPem('binary'));
-
-        //Hmm... OpenSSL is an installation requirement for URSA anyway, so maybe this fork is totally unnecessary...
-        //in any case, it doesn't look like ursa can do this type conversion, so lets use openssl.
-        return utilities.deferredChildProcess("openssl rsa -in " + filename + ".pem -outform DER -out " + filename + ".der");
-    },
+//    makeKeyUrsa: function (filename) {
+//        var key = ursa.generatePrivateKey(1024);
+//        fs.writeFileSync(filename + ".pem", key.toPrivatePem('binary'));
+//        fs.writeFileSync(filename + ".pub.pem", key.toPublicPem('binary'));
+//
+//        //Hmm... OpenSSL is an installation requirement for URSA anyway, so maybe this fork is totally unnecessary...
+//        //in any case, it doesn't look like ursa can do this type conversion, so lets use openssl.
+//        return utilities.deferredChildProcess("openssl rsa -in " + filename + ".pem -outform DER -out " + filename + ".der");
+//    },
 
 
     makeNewKey: function (filename) {
@@ -108,12 +109,12 @@ KeyCommands.prototype = extend(BaseCommand.prototype, {
         }
 
         var keyReady;
-        if (settings.useOpenSSL) {
+        //if (settings.useOpenSSL) {
             keyReady = this.makeKeyOpenSSL(filename);
-        }
-        else {
-            keyReady = this.makeKeyUrsa(filename);
-        }
+        //}
+        //else {
+        //    keyReady = this.makeKeyUrsa(filename);
+        //}
 
         when(keyReady).then(function () {
             console.log("New Key Created!");
@@ -143,7 +144,7 @@ KeyCommands.prototype = extend(BaseCommand.prototype, {
         var ready = sequence([
             function () {
                 //make sure our core is online and in dfu mode
-                return dfu.findCompatiableDFU();
+                return dfu.findCompatibleDFU();
             },
             //backup their existing key so they don't lock themselves out.
             function() {
@@ -164,6 +165,8 @@ KeyCommands.prototype = extend(BaseCommand.prototype, {
         return ready;
     },
 
+
+
     saveKeyFromCore: function (filename) {
         if (!filename) {
             console.error("Please provide a filename to store this key.");
@@ -183,7 +186,7 @@ KeyCommands.prototype = extend(BaseCommand.prototype, {
 
         var ready = sequence([
             function () {
-                return dfu.findCompatiableDFU();
+                return dfu.findCompatibleDFU();
             },
             function () {
                 return dfu.readPrivateKey(filename, false);
@@ -218,9 +221,10 @@ KeyCommands.prototype = extend(BaseCommand.prototype, {
             }
         }
 
-        //TODO: replace with better interactive init
-        var api = new ApiClient(settings.apiUrl);
-        api._access_token = settings.access_token;
+        var api = new ApiClient(settings.apiUrl, settings.access_token);
+        if (!api.ready()) {
+            return;
+        }
 
         var keyStr = fs.readFileSync(filename).toString();
         return api.sendPublicKey(coreid, keyStr);
@@ -235,7 +239,7 @@ KeyCommands.prototype = extend(BaseCommand.prototype, {
         var that = this;
         var allDone = sequence([
             function () {
-                return dfu.findCompatiableDFU();
+                return dfu.findCompatibleDFU();
             },
             function() {
                 return that.makeNewKey(coreid + "_new");
@@ -255,6 +259,24 @@ KeyCommands.prototype = extend(BaseCommand.prototype, {
             },
             function (err) {
                 console.log("Make sure your core is in DFU mode (blinking yellow), and that your computer is online.");
+                console.error("Error - " + err);
+            });
+    },
+
+    writeServerPublicKey: function (filename) {
+        if (!filename || (!fs.existsSync(filename))) {
+            console.log("Please specify a server key in DER format.");
+            return -1;
+        }
+
+        var allDone = dfu.writeServerKey(filename, false);
+        when(allDone).then(
+            function () {
+                console.log("Okay!  New keys in place, your core will not restart.");
+
+            },
+            function (err) {
+                console.log("Make sure your core is in DFU mode (blinking yellow), and is connected to your computer");
                 console.error("Error - " + err);
             });
     },
